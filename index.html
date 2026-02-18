@@ -5,12 +5,20 @@
 </head>
 
 <style>
+	:root {
+		font-size: 2rem;
+	}
+
 	p {
 		max-width: 1000px;
 		width: 100%;
 		margin: auto;
-		font-size: 16pt;
+		font-size: 125%;
+		max-height: 250px;
+		overflow-x: auto;
+		overflow-y: auto;
 	}
+
 	div {
 		max-width: 1000px;
 		width: 100%;
@@ -18,140 +26,152 @@
 		display: flex;
 		justify-content: space-between;
 	}
+
 	span {
 		width: fit-content;
 		max-width: fit-content;
 	}
+
 	hr {
 		max-width: 1000px;
 		width: 100%;
 	}
+
 	textarea {
 		max-width: 1000px;
-		width: 95vw;
+		width: 100%;
 		height: 150px;
 		resize: none;
 		margin: auto;
+		font-size: 100%;
+	}
+
+	.form-wrapper {
+		max-width: 1000px;
+		width: 100%;
+		margin: 10px auto;
+		margin-bottom: 15px;
+		display: flex;
+		flex-direction: column;
+		gap: 7.5px;
+	}
+
+	.form-wrapper input,
+	.form-wrapper textarea {
+		width: 100%;
+		font-size: 100%;
+		box-sizing: border-box;
+	}
+
+	.form-wrapper textarea {
+		min-height: 120px;
+		resize: vertical;
 	}
 </style>
 
 <body>
-
-	<div style="max-width: 1000px; width: 95vw; margin: auto; display: grid; margin-bottom: 25px; margin-top: 10px;">
-		<span style="max-width: 1000px; width: 95vw; justify-content: space-between; margin-bottom: 10px;">
-			<div>
-				<span>
-					<input id="username" placeholder="Name">
-					<input id="password" placeholder="Passwort">
-				</span>
-				<button onclick="createPost()">Post</button>
-			</div>
-		</span>
-		<textarea id="postcontent" placeholder="Write something..."></textarea>
+	<div class="form-wrapper">
+		<input id="username" placeholder="Name">
+		<input id="password" type="password" placeholder="Passwort">
+		<textarea id="postcontent" placeholder="Dein Post..."></textarea>
 	</div>
-	<div id="content" style="display: inline;">
+	<div style="margin-bottom: 25px;">
+		<button onclick="createPost()" style="font-size: 100%; width: 100%; max-width: 1000px; padding: 0px; margin: 0px;">Post</button>
 	</div>
 
+	<div id="content" style="display: inline; padding-bottom: 25px;">
+	</div>
 </body>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
-const { createClient } = window.supabase;
+	const { createClient } = window.supabase;
 
-const supabaseClient = createClient(
-	"https://sjowpmjbcguymipdofsu.supabase.co",
-	"sb_publishable_Eb-EZRz067MGzEyixtvCSQ_e2vC_gAQ"
-);
+	const supabaseClient = createClient(
+		"https://sjowpmjbcguymipdofsu.supabase.co",
+		"sb_publishable_Eb-EZRz067MGzEyixtvCSQ_e2vC_gAQ"
+	);
 
-async function getPosts() {
-  const { data: data, error: error } = await supabaseClient
-    .from("Posts")
-    .select("*")
-	.order("created_at", { ascending: false });
-  return data;
-}
-async function getUsers() {
-  const { data: data, error: error } = await supabaseClient
-    .from("Users")
-    .select("*");
-  return data;
-}
-
-var posts; var users;
-async function init() {
-  posts = await getPosts();
-  users = await getUsers();
-
-}
-
-async function loadPosts() {
-
+	async function loadPosts() {
 		document.getElementById("content").innerHTML = "";
 
-		const { data: users, error: usersError } = await supabaseClient
-		.from("Users")
-		.select("*");
-  
-		const { data: posts, error: postsError } = await supabaseClient
-		.from("Posts")
-		.select("*")
-		.order("created_at", { ascending: false });
-
-	for (var i = 0; i < posts.length; i++) {
-		var date = new Date(posts[i].created_at);
-		var topContainer = document.createElement("div");
-
-		var usersP = document.createElement("span");
-		usersP.innerText = users[posts[i].user_id - 1].name;
-		topContainer.appendChild(usersP);
-		var dateP = document.createElement("span");
-		dateP.innerText = date.toLocaleString("de-de");
-		topContainer.appendChild(dateP);
-		var contentP = document.createElement("p");
-		contentP.innerText = posts[i].content
-
-		document.getElementById("content").appendChild(topContainer);
-		document.getElementById("content").appendChild(contentP);
-		if (i < posts.length - 1)
-			document.getElementById("content").appendChild(document.createElement("hr"));
-	}
-}
-
-async function createPost() {
-		const { data: users, error: usersError } = await supabaseClient
-		.from("Users")
-		.select("*");
-  
-		const { data: posts, error: postsError } = await supabaseClient
-		.from("Posts")
-		.select("*")
-		.order("created_at", { ascending: false });
-  
-	var username = document.getElementById("username").value;
-	var password = document.getElementById("password").value;
-	var content = document.getElementById("postcontent").value;
-	var index = users.findIndex(function fn(x) { return (username == x["name"]); });
-
-	if (index >= 0 && password == users[index]["password"] && content.length > 0) {
-		await supabaseClient
+		var { data: posts, error: postsError } = await supabaseClient
 			.from("Posts")
-			.insert([{ id: posts.length + 1, user_id: index + 1, content: content }]);
-		loadPosts();
+			.select("*")
+			.order("created_at", { ascending: false })
+			.range(0, 20);
+
+		for (var i = 0; i < posts.length; i++) {
+			var date = new Date(posts[i].created_at);
+			var topContainer = document.createElement("div");
+
+			var { data: user, error: userError } = await supabaseClient
+				.from("Users")
+				.select("*")
+				.eq("id", posts[i].user_id)
+				.order("created_at", { ascending: true })
+				.range(0, 1);
+			user = user[0];
+
+			var usersP = document.createElement("span");
+			usersP.innerText = user.name;
+			topContainer.appendChild(usersP);
+			var dateP = document.createElement("span");
+			dateP.innerText = date.toLocaleString("de-de");
+			topContainer.appendChild(dateP);
+			var contentP = document.createElement("p");
+			contentP.innerText = posts[i].content
+
+			document.getElementById("content").appendChild(topContainer);
+			document.getElementById("content").appendChild(contentP);
+			if (i < posts.length - 1)
+				document.getElementById("content").appendChild(document.createElement("hr"));
+		}
 	}
-	else if (index < 0 && username.length > 0 && password.length > 0 && content.length > 0) {
-		console.log(content.length);
-		await supabaseClient
+
+	async function createPost() {
+		var username = document.getElementById("username").value;
+		var password = document.getElementById("password").value;
+		var content = document.getElementById("postcontent").value;
+
+		var { data: user, error: userError } = await supabaseClient
 			.from("Users")
-			.insert([{ id: users.length + 1, name: username, password: password }]);
-		await supabaseClient
-			.from("Posts")
-			.insert([{ id: posts.length + 1, user_id: users.length, content: content }]);
-		loadPosts();
+			.select("*")
+			.eq("name", username)
+			.order("created_at", { ascending: true })
+			.range(0, 1);
+
+		user = user[0];
+		console.log("Id: ", user);
+		if (user && password == user.password && content.length > 0) {
+			await supabaseClient
+				.from("Posts")
+				.insert([{ user_id: user.id, content: content }]);
+			loadPosts();
+			document.getElementById("postcontent").value = "";
+		}
+		else if (!user && username.length > 0 && password.length > 0 && content.length > 0) {
+			await supabaseClient
+				.from("Users")
+				.insert([{ name: username, password: password }]);
+			var { data: user, error: userError } = await supabaseClient
+				.from("Users")
+				.select("*")
+				.eq("name", username)
+				.order("created_at", { ascending: true })
+				.range(0, 1);
+			user = user[0];
+			await supabaseClient
+				.from("Posts")
+				.insert([{ user_id: user.id, content: content }]);
+			loadPosts();
+			document.getElementById("postcontent").value = "";
+		}
+		else {
+			alert("Fehler beim Posten.\nBitte füll jedes Feld aus und gib gültige Anmeldedaten ein.")
+		}
 	}
-}
 
-loadPosts();
-init();
-
+	loadPosts();
 </script>
 </html>
