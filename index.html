@@ -67,20 +67,38 @@
 		min-height: 120px;
 		resize: vertical;
 	}
+
+	.scroll-top {
+		overflow-x: auto;
+		font-size: 125%;
+		transform: rotateX(180deg);
+	}
+
+	.scroll-top > * {
+		transform: rotateX(180deg);
+	}
 </style>
 
 <body>
+	<div id="tags" class="scroll-top" style="justify-content: left;">
+	</div>
+
 	<div class="form-wrapper">
 		<input id="username" placeholder="Name">
 		<input id="password" type="password" placeholder="Passwort">
 		<textarea id="postcontent" placeholder="Dein Post..."></textarea>
 	</div>
+
 	<div style="margin-bottom: 25px;">
 		<button onclick="createPost()" style="font-size: 100%; width: 100%; max-width: 1000px; padding: 0px; margin: 0px;">Post</button>
 	</div>
 
 	<div id="content" style="display: inline; padding-bottom: 25px;">
 	</div>
+
+	<p style="font-size: 75%; text-align: center; width: 100%; max-width: 100%;">
+		:)
+	</p>
 </body>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
@@ -92,86 +110,208 @@
 		"sb_publishable_Eb-EZRz067MGzEyixtvCSQ_e2vC_gAQ"
 	);
 
+	const DB = {
+		Posts: null,
+		Users: null,
+		Tags: null,
+		Posts_to_Tags: null,
+		loaded: false
+	};
+
+	async function loadDatabase(forceRefresh = false) {
+		if (DB.loaded && !forceRefresh) return DB;
+
+		const [
+			postsRes,
+			usersRes,
+			tagsRes,
+			ptRes
+		] = await Promise.all([
+			supabaseClient.from("Posts").select("*"),
+			supabaseClient.from("Users").select("*"),
+			supabaseClient.from("Tags").select("*"),
+			supabaseClient.from("Posts_to_Tags").select("*")
+		]);
+
+		if (postsRes.error || usersRes.error || tagsRes.error || ptRes.error) {
+			console.error("DB load error", postsRes.error, usersRes.error, tagsRes.error, ptRes.error);
+			return null;
+		}
+
+		DB.Posts = postsRes.data;
+		DB.Users = usersRes.data;
+		DB.Tags = tagsRes.data;
+		DB.Posts_to_Tags = ptRes.data;
+		DB.loaded = true;
+
+		return DB;
+	}
+
+	async function refreshDB() {
+		return await loadDatabase(true);
+	}
+
+	const Query = {
+		postsByUser: id =>
+			DB.Posts.filter(p => p.user_id === id),
+
+		postById: id =>
+			DB.Posts.find(p => p.id === id),
+
+		userById: id =>
+			DB.Users.find(u => u.id === id),
+
+		userByName: name =>
+			DB.Users.find(u => u.name === name),
+
+		tagByName: name =>
+			(name == "#all" ? { id: 0 } : DB.Tags.find(t => t.name === name)),
+
+		tagsOfPost: id =>
+			DB.Posts_to_Tags
+				.filter(t => t.post_id === id)
+				.map(t => DB.Tags.find(tag => tag.id === t.tag_id)),
+
+		newestPosts: () =>
+			[...DB.Posts].sort((a,b)=> new Date(b.created_at)- new Date(a.created_at))
+	};
+
+
+	async function loadTags() {
+		var dict = [{ key: "#all", value: 0 }];
+
+		DB.Posts.forEach(p => {
+			Query.tagsOfPost(p.id).forEach(t => {
+				const index = dict.findIndex(x => x.key === t.name);
+
+				if (index < 0) dict.push({ key: t.name, value: 1 });
+				else dict[index].value++;
+			});
+			dict[0].value++;
+		});
+
+		dict.sort((a, b) => b.value - a.value).forEach(t => {
+			var linkP = document.createElement("a");
+
+			linkP.href = "/?t=" + Query.tagByName(t.key).id;
+			linkP.innerHTML = t.key + "_(" + t.value + ")";
+			linkP.style.margin = "0px 10px";
+			linkP.style.color = "#0000FF";
+
+			document.getElementById("tags").appendChild(linkP);
+		});
+	}
+
 	async function loadPosts() {
 		document.getElementById("content").innerHTML = "";
 
-		var { data: posts, error: postsError } = await supabaseClient
-			.from("Posts")
-			.select("*")
-			.order("created_at", { ascending: false })
-			.range(0, 20);
+		const urlParams = new URLSearchParams(window.location.search);
+		const tagFilter = urlParams.get('t');
 
-		for (var i = 0; i < posts.length; i++) {
-			var date = new Date(posts[i].created_at);
+		var posts = Query.newestPosts(DB.Posts);
+		if (tagFilter && tagFilter != 0) {
+			posts = posts.filter(
+				p => DB.Posts_to_Tags.find(x => (x.post_id == p.id && x.tag_id == tagFilter)));
+		}
+
+		posts.forEach(p => {	
 			var topContainer = document.createElement("div");
 
-			var { data: user, error: userError } = await supabaseClient
-				.from("Users")
-				.select("*")
-				.eq("id", posts[i].user_id)
-				.order("created_at", { ascending: true })
-				.range(0, 1);
-			user = user[0];
-
 			var usersP = document.createElement("span");
-			usersP.innerText = user.name;
+			usersP.innerText = Query.userById(p.user_id).name;
 			topContainer.appendChild(usersP);
+
 			var dateP = document.createElement("span");
-			dateP.innerText = date.toLocaleString("de-de");
+			dateP.innerText = new Date(p.created_at).toLocaleString("de-de");
 			topContainer.appendChild(dateP);
+
 			var contentP = document.createElement("p");
-			contentP.innerText = posts[i].content
+			contentP.innerText = p.content;
+
+			var tagP = document.createElement("p");
+			tagP.style.fontSize = "100%";
+			tagP.style.color = "grey";
+			Query.tagsOfPost(p.id).forEach(t => {
+				tagP.innerText += t.name + " ";
+			});
 
 			document.getElementById("content").appendChild(topContainer);
 			document.getElementById("content").appendChild(contentP);
-			if (i < posts.length - 1)
-				document.getElementById("content").appendChild(document.createElement("hr"));
-		}
+			document.getElementById("content").appendChild(tagP);
+			document.getElementById("content").appendChild(document.createElement("hr"));
+		});
 	}
 
 	async function createPost() {
 		var username = document.getElementById("username").value;
 		var password = document.getElementById("password").value;
 		var content = document.getElementById("postcontent").value;
+		var hashtags = content.match(/#[\p{L}\p{N}_]+/gu);
+		if (hashtags) hashtags = hashtags.map(h => h.toLowerCase());
 
-		var { data: user, error: userError } = await supabaseClient
-			.from("Users")
-			.select("*")
-			.eq("name", username)
-			.order("created_at", { ascending: true })
-			.range(0, 1);
-
-		user = user[0];
-		console.log("Id: ", user);
+		var user = Query.userByName(username);
 		if (user && password == user.password && content.length > 0) {
-			await supabaseClient
+			var { data: post, error: postError } = await supabaseClient
 				.from("Posts")
-				.insert([{ user_id: user.id, content: content }]);
-			loadPosts();
-			document.getElementById("postcontent").value = "";
+				.insert([{ user_id: user.id, content: content }])
+				.select()
+				.single();
 		}
 		else if (!user && username.length > 0 && password.length > 0 && content.length > 0) {
 			await supabaseClient
 				.from("Users")
 				.insert([{ name: username, password: password }]);
-			var { data: user, error: userError } = await supabaseClient
+
+			var { data: newUser, error: newUserError } = await supabaseClient
 				.from("Users")
 				.select("*")
 				.eq("name", username)
 				.order("created_at", { ascending: true })
-				.range(0, 1);
-			user = user[0];
-			await supabaseClient
+				.single();
+
+			var { data: post, error: postError } = await supabaseClient
 				.from("Posts")
-				.insert([{ user_id: user.id, content: content }]);
-			loadPosts();
-			document.getElementById("postcontent").value = "";
+				.insert([{ user_id: newUser.id, content: content }])
+				.select()
+				.single();
 		}
 		else {
-			alert("Fehler beim Posten.\nBitte füll jedes Feld aus und gib gültige Anmeldedaten ein.")
+			alert(`Fehler beim Posten.\n
+				Bitte füll jedes Feld aus und gib gültige Anmeldedaten ein.`)
+			return;
 		}
+
+		if (hashtags)
+			for (const t of hashtags) {
+				await supabaseClient
+					.from("Tags")
+					.insert([{ name: t }]);
+
+				var { data: tag, error: tagError } = await supabaseClient
+					.from("Tags")
+					.select("*")
+					.eq("name", t)
+					.single();
+
+				if (!tagError) {
+					await supabaseClient
+						.from("Posts_to_Tags")
+						.insert([{ tag_id: tag.id, post_id: post.id }]);
+				}
+			}
+
+		await refreshDB();
+		loadPosts();
+		loadTags();
+		document.getElementById("postcontent").value = "";
 	}
 
-	loadPosts();
+
+	init();
+	async function init() {
+		await loadDatabase();
+		loadPosts();
+		loadTags();
+	}
 </script>
 </html>
