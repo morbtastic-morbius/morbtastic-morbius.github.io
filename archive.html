@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<meta charset="UTF-8">
+</head>
+
+<style>
+	:root {
+		font-size: 2rem;
+	}
+
+	p {
+		max-width: 1000px;
+		width: 100%;
+		margin: auto;
+		font-size: 125%;
+		max-height: 250px;
+		overflow-x: auto;
+		overflow-y: auto;
+	}
+
+	div {
+		max-width: 1000px;
+		width: 100%;
+		margin: auto;
+		display: flex;
+		justify-content: space-between;
+	}
+
+	span {
+		width: fit-content;
+		max-width: fit-content;
+	}
+
+	hr {
+		max-width: 1000px;
+		width: 100%;
+	}
+
+	textarea {
+		max-width: 1000px;
+		width: 100%;
+		height: 150px;
+		resize: none;
+		margin: auto;
+		font-size: 100%;
+	}
+
+	.form-wrapper {
+		max-width: 1000px;
+		width: 100%;
+		margin: 10px auto;
+		margin-bottom: 15px;
+		display: flex;
+		flex-direction: column;
+		gap: 7.5px;
+	}
+
+	.form-wrapper input,
+	.form-wrapper textarea {
+		width: 100%;
+		font-size: 100%;
+		box-sizing: border-box;
+	}
+
+	.form-wrapper textarea {
+		min-height: 120px;
+		resize: vertical;
+	}
+
+	.scroll-top {
+		overflow-x: auto;
+		font-size: 125%;
+		transform: rotateX(180deg);
+	}
+
+	.scroll-top > * {
+		transform: rotateX(180deg);
+	}
+</style>
+
+<body>
+	<div id="tags" class="scroll-top" style="justify-content: left; margin-bottom: 25px;">
+	</div>
+
+	<div id="content" style="display: inline; padding-bottom: 25px;">
+	</div>
+
+	<p style="font-size: 75%; text-align: center; width: 100%; max-width: 100%;">
+		:)
+	</p>
+</body>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+	const { createClient } = window.supabase;
+
+	const supabaseClient = createClient(
+		"https://sjowpmjbcguymipdofsu.supabase.co",
+		"sb_publishable_Eb-EZRz067MGzEyixtvCSQ_e2vC_gAQ"
+	);
+
+	const DB = {
+		Posts: null,
+		Users: null,
+		Tags: null,
+		Posts_to_Tags: null,
+		loaded: false
+	};
+
+	async function loadDatabase(forceRefresh = false) {
+		if (DB.loaded && !forceRefresh) return DB;
+
+		const [
+			postsRes,
+			usersRes,
+			tagsRes,
+			ptRes
+		] = await Promise.all([
+			supabaseClient.from("Posts_Archive").select("*"),
+			supabaseClient.from("Users").select("*"),
+			supabaseClient.from("Tags").select("*"),
+			supabaseClient.from("Posts_to_Tags").select("*")
+		]);
+
+		if (postsRes.error || usersRes.error || tagsRes.error || ptRes.error) {
+			console.error("DB load error", postsRes.error, usersRes.error, tagsRes.error, ptRes.error);
+			return null;
+		}
+
+		DB.Posts = postsRes.data;
+		DB.Users = usersRes.data;
+		DB.Tags = tagsRes.data;
+		DB.Posts_to_Tags = ptRes.data;
+		DB.loaded = true;
+
+		return DB;
+	}
+
+	async function refreshDB() {
+		return await loadDatabase(true);
+	}
+
+	const Query = {
+		postsByUser: id =>
+			DB.Posts.filter(p => p.user_id === id),
+
+		postById: id =>
+			DB.Posts.find(p => p.id === id),
+
+		userById: id =>
+			DB.Users.find(u => u.id === id),
+
+		userByName: name =>
+			DB.Users.find(u => u.name === name),
+
+		tagByName: name =>
+			(name == "#all" ? { id: 0 } : DB.Tags.find(t => t.name === name)),
+
+		tagsOfPost: id =>
+			DB.Posts_to_Tags
+				.filter(t => t.post_id === id)
+				.map(t => DB.Tags.find(tag => tag.id === t.tag_id)),
+
+		newestPosts: () =>
+			[...DB.Posts].sort((a,b)=> new Date(b.created_at)- new Date(a.created_at))
+	};
+
+
+	async function loadTags() {
+		var dict = [{ key: "#all", value: 0 }];
+
+		DB.Posts.forEach(p => {
+			Query.tagsOfPost(p.id).forEach(t => {
+				const index = dict.findIndex(x => x.key === t.name);
+
+				if (index < 0) dict.push({ key: t.name, value: 1 });
+				else dict[index].value++;
+			});
+			dict[0].value++;
+		});
+
+		dict.sort((a, b) => b.value - a.value).forEach(t => {
+			var linkP = document.createElement("a");
+
+			linkP.href = "/?t=" + Query.tagByName(t.key).id;
+			linkP.innerHTML = t.key + "_(" + t.value + ")";
+			linkP.style.margin = "0px 10px";
+			linkP.style.color = "#0000FF";
+
+			document.getElementById("tags").appendChild(linkP);
+		});
+	}
+
+	async function loadPosts() {
+		document.getElementById("content").innerHTML = "";
+
+		const urlParams = new URLSearchParams(window.location.search);
+		const tagFilter = urlParams.get('t');
+
+		var posts = Query.newestPosts(DB.Posts);
+		if (tagFilter && tagFilter != 0) {
+			posts = posts.filter(
+				p => DB.Posts_to_Tags.find(x => (x.post_id == p.id && x.tag_id == tagFilter)));
+		}
+
+		posts.forEach(p => {	
+			var topContainer = document.createElement("div");
+
+			var usersP = document.createElement("span");
+			usersP.innerText = Query.userById(p.user_id).name;
+			topContainer.appendChild(usersP);
+
+			var dateP = document.createElement("span");
+			dateP.innerText = new Date(p.created_at).toLocaleString("de-de");
+			topContainer.appendChild(dateP);
+
+			var contentP = document.createElement("p");
+			contentP.innerHTML = p.content;
+
+			var tagP = document.createElement("p");
+			tagP.style.fontSize = "100%";
+			tagP.style.color = "grey";
+			Query.tagsOfPost(p.id).forEach(t => {
+				tagP.innerText += t.name + " ";
+			});
+
+			document.getElementById("content").appendChild(topContainer);
+			document.getElementById("content").appendChild(contentP);
+			document.getElementById("content").appendChild(tagP);
+			document.getElementById("content").appendChild(document.createElement("hr"));
+		});
+	}
+
+	async function createPost() {
+		var username = document.getElementById("username").value;
+		var password = document.getElementById("password").value;
+		var content = document.getElementById("postcontent").value;
+		var hashtags = content.match(/#[\p{L}\p{N}_]+/gu);
+		if (hashtags) hashtags = hashtags.map(h => h.toLowerCase());
+
+		var user = Query.userByName(username);
+		if (user && password == user.password && content.length > 0) {
+			var { data: post, error: postError } = await supabaseClient
+				.from("Posts")
+				.insert([{ user_id: user.id, content: content }])
+				.select()
+				.single();
+		}
+		else if (!user && username.length > 0 && password.length > 0 && content.length > 0) {
+			await supabaseClient
+				.from("Users")
+				.insert([{ name: username, password: password }]);
+
+			var { data: newUser, error: newUserError } = await supabaseClient
+				.from("Users")
+				.select("*")
+				.eq("name", username)
+				.order("created_at", { ascending: true })
+				.single();
+
+			var { data: post, error: postError } = await supabaseClient
+				.from("Posts")
+				.insert([{ user_id: newUser.id, content: content }])
+				.select()
+				.single();
+		}
+		else {
+			alert(`Fehler beim Posten.\n
+				Bitte füll jedes Feld aus und gib gültige Anmeldedaten ein.`)
+			return;
+		}
+
+		if (hashtags)
+			for (const t of hashtags) {
+				await supabaseClient
+					.from("Tags")
+					.insert([{ name: t }]);
+
+				var { data: tag, error: tagError } = await supabaseClient
+					.from("Tags")
+					.select("*")
+					.eq("name", t)
+					.single();
+
+				if (!tagError) {
+					await supabaseClient
+						.from("Posts_to_Tags")
+						.insert([{ tag_id: tag.id, post_id: post.id }]);
+				}
+			}
+
+		await refreshDB();
+		loadPosts();
+		loadTags();
+		document.getElementById("postcontent").value = "";
+	}
+
+
+	init();
+	async function init() {
+		await loadDatabase();
+		loadPosts();
+		loadTags();
+	}
+</script>
+</html>
