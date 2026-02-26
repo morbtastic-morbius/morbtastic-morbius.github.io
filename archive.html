@@ -183,7 +183,7 @@
 		dict.sort((a, b) => b.value - a.value).forEach(t => {
 			var linkP = document.createElement("a");
 
-			linkP.href = "/?t=" + Query.tagByName(t.key).id;
+			linkP.href = "/archive.html?t=" + Query.tagByName(t.key).id;
 			linkP.innerHTML = t.key + "_(" + t.value + ")";
 			linkP.style.margin = "0px 10px";
 			linkP.style.color = "#0000FF";
